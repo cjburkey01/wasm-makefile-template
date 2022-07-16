@@ -1,0 +1,72 @@
+# Environment variable for debug profile
+[env.development]
+ENV_DIR = "debug"
+
+# Environment variables for release profile
+[env.production]
+ENV_DIR = "release"
+ENABLE_RELEASE = "--release"
+
+# Shared environment variables
+[env]
+TARGET_TYPE = "wasm32-unknown-unknown"
+FULL_TRGT_DIR = "target/${TARGET_TYPE}/${ENV_DIR}"
+OUTPUT_DIR = "generated"
+DEVSERVER_PORT = "8080"
+
+# Deletes the `generated` directory
+[tasks.clean_generated]
+script_runner = "@shell"
+script = '''
+rm -rf ${OUTPUT_DIR}
+'''
+
+# Performs a `cargo clean`
+[tasks.clean_cargo]
+command = "cargo"
+args = ["clean"]
+
+# Performs a full clean
+[tasks.clean]
+clear = true
+dependencies = ["clean_generated", "clean_cargo"]
+
+# Builds the cargo project
+[tasks.build_cargo]
+command = "cargo"
+args = ["build", "--target", "${TARGET_TYPE}", "@@remove-empty(ENABLE_RELEASE)", "@@split(CARGO_RELEASE_ARGS, )"]
+
+# Executes `wasm-bindgen`
+[tasks.build_web]
+install_crate = "wasm-bindgen-cli"
+command = "wasm-bindgen"
+args = ["${FULL_TRGT_DIR}/${CARGO_MAKE_CRATE_FS_NAME}.wasm", "--out-dir", "${OUTPUT_DIR}", "--target", "web"]
+dependencies = ["build_cargo"]
+
+# Copies the index file from `src/index.html` into the `generated` directory.
+[tasks.copy_index]
+script_runner = "@shell"
+script = '''
+cp src/index.html ${OUTPUT_DIR}/index.html
+'''
+
+# Performs a full build
+[tasks.build]
+clear = true
+run_task = [
+    { name = ["clean_generated", "build_web", "copy_index"] },
+]
+
+# Performs a full build and runs a simple devserver
+[tasks.dev_server]
+install_crate = "devserver"
+command = "devserver"
+args = ["--path", "${OUTPUT_DIR}", "--address", "127.0.0.1:${DEVSERVER_PORT}"]
+dependencies = ["build"]
+
+# Called with `cargo make`
+[tasks.default]
+clear = true
+run_task = [
+    { name = ["build"] },
+]
